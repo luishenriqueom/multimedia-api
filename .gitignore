@@ -1,0 +1,16 @@
+.idea/
+.vscode
+*.pyo
+*.pyc
+__cache__
+sqlite.db
+*.db
+*.sqlite
+media/
+__pycache__
+*.py[cod]
+.venv/
+.DS_Store
+Thumbs.db
+*.env
+_upload/*
