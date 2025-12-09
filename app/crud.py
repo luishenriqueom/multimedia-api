@@ -2,9 +2,11 @@ from sqlalchemy.orm import Session
 from . import models, schemas
 from passlib.context import CryptContext
 from typing import Optional, List
+import hashlib
+import bcrypt
 from sqlalchemy import or_
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt_sha256"], deprecated="auto")
 
 # Users
 
@@ -12,7 +14,9 @@ def get_user_by_email(db: Session, email: str) -> Optional[models.User]:
     return db.query(models.User).filter(models.User.email == email).first()
 
 def create_user(db: Session, user: schemas.UserCreate) -> models.User:
-    hashed = pwd_context.hash(user.password)
+    pw_bytes = user.password.encode("utf-8")
+    sha = hashlib.sha256(pw_bytes).digest()
+    hashed = bcrypt.hashpw(sha, bcrypt.gensalt()).decode("utf-8")
     db_user = models.User(email=user.email, hashed_password=hashed, full_name=user.full_name)
     db.add(db_user)
     db.commit()
@@ -23,9 +27,25 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[models
     user = get_user_by_email(db, email)
     if not user:
         return None
-    if not pwd_context.verify(password, user.hashed_password):
-        return None
-    return user
+    pw_bytes = password.encode("utf-8")
+    sha = hashlib.sha256(pw_bytes).digest()
+    try:
+        if bcrypt.checkpw(sha, user.hashed_password.encode("utf-8")):
+            return user
+    except Exception:
+        # fallback to passlib verification for legacy hashes
+        try:
+            if pwd_context.verify(password, user.hashed_password):
+                # re-hash under the new scheme and store
+                new_hash = bcrypt.hashpw(sha, bcrypt.gensalt()).decode("utf-8")
+                user.hashed_password = new_hash
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+                return user
+        except Exception:
+            return None
+    return None
 
 def update_user(db: Session, db_user: models.User, updates: schemas.UserUpdate) -> models.User:
     if updates.full_name is not None:
