@@ -7,7 +7,10 @@ import os
 
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Multimedia CRUD API")
+app = FastAPI(
+    title="Multimedia CRUD API",
+    root_path="/api"    
+)
 # Read allowed frontend origins from env var FRONTEND_ORIGINS (comma-separated).
 # When the client uses `fetch(..., { credentials: 'include' })`, the Access-Control-Allow-Origin
 # header must NOT be '*' — it must echo a specific origin. Default to localhost:3000 for dev.
