@@ -45,7 +45,6 @@ def update_users_me(updates: schemas.UserUpdate, db: Session = Depends(get_db), 
 # Media endpoints
 @router.post('/media/upload/image', response_model=schemas.MediaOut)
 def upload_image(
-    title: str = Form(None),
     description: str = Form(None),
     is_profile: bool = Form(False),
     tags: str = Form(None),  # Comma-separated tags
@@ -84,7 +83,7 @@ def upload_image(
     s3_utils.upload_fileobj(orig_io, orig_key, mimetype)
 
     # Create media DB record (without is_public)
-    meta = schemas.MediaCreate(title=title, description=description, is_public=False)
+    meta = schemas.MediaCreate(description=description, is_public=False)
     media = crud.create_media(db, current_user, safe_name, orig_key, mimetype, size_bytes, meta, media_type='image')
 
     # Associate tags if provided
@@ -189,9 +188,63 @@ def upload_image(
     return media
 
 
+@router.put('/media/image/{media_id}', response_model=schemas.ImageOut)
+def update_image(
+    media_id: int,
+    updates: schemas.ImageUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    media = crud.get_media(db, media_id)
+    if not media:
+        raise HTTPException(status_code=404, detail='Media not found')
+    if media.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail='Not authorized')
+    # Ensure it's an image
+    if not (media.mimetype and media.mimetype.startswith('image/')) and media.media_type != 'image':
+        raise HTTPException(status_code=400, detail='Media is not an image')
+
+    # Update description if provided
+    if updates.description is not None:
+        crud.update_media(db, media, description=updates.description)
+
+    # Replace tags if provided
+    if updates.tags is not None:
+        crud.replace_tags_for_media(db, media, updates.tags)
+
+    # Refresh media to get updated relationships
+    db.refresh(media)
+
+    # Build response similar to get_image
+    img_md = getattr(media, 'image_metadata', None)
+    try:
+        url = s3_utils.generate_presigned_url(media.s3_key)
+    except Exception:
+        url = None
+
+    tags = [t.name for t in (media.tags or [])]
+
+    resp = {
+        'id': media.id,
+        'description': media.description,
+        'filename': media.filename,
+        'mimetype': media.mimetype,
+        'size': media.size,
+        'created_at': media.created_at.isoformat() if media.created_at else None,
+        'width': getattr(img_md, 'width', None) if img_md else None,
+        'height': getattr(img_md, 'height', None) if img_md else None,
+        'color_depth': getattr(img_md, 'color_depth', None) if img_md else None,
+        'dpi_x': getattr(img_md, 'dpi_x', None) if img_md else None,
+        'dpi_y': getattr(img_md, 'dpi_y', None) if img_md else None,
+        'exif': getattr(img_md, 'exif', None) if img_md else None,
+        'url': url,
+        'tags': tags,
+    }
+    return resp
+
+
 @router.post('/media/upload/video', response_model=schemas.MediaOut)
 def upload_video(
-    title: str = Form(None),
     description: str = Form(None),
     genero: str = Form(None),
     tags: str = Form(None),  # Comma-separated tags
@@ -225,7 +278,7 @@ def upload_video(
     s3_utils.upload_fileobj(file.file, orig_key, mimetype)
 
     # Create media DB record
-    meta = schemas.MediaCreate(title=title, description=description, is_public=False)
+    meta = schemas.MediaCreate(description=description, is_public=False)
     media = crud.create_media(db, current_user, safe_name, orig_key, mimetype, size_bytes, meta, media_type='video')
 
     # Associate tags if provided
@@ -314,7 +367,6 @@ def upload_video(
 
 @router.post('/media/upload/audio', response_model=schemas.MediaOut)
 def upload_audio(
-    title: str = Form(None),
     description: str = Form(None),
     genero: str = Form(None),
     tags: str = Form(None),  # Comma-separated tags
@@ -348,7 +400,7 @@ def upload_audio(
     s3_utils.upload_fileobj(file.file, orig_key, mimetype)
 
     # Create media DB record
-    meta = schemas.MediaCreate(title=title, description=description, is_public=False)
+    meta = schemas.MediaCreate(description=description, is_public=False)
     media = crud.create_media(db, current_user, safe_name, orig_key, mimetype, size_bytes, meta, media_type='audio')
 
     # Associate tags if provided
@@ -431,7 +483,6 @@ def get_image(media_id: int, db: Session = Depends(get_db), current_user: models
         raise HTTPException(status_code=400, detail='Media is not an image')
 
     img_md = getattr(media, 'image_metadata', None)
-    thumb_url = None
     try:
         url = s3_utils.generate_presigned_url(media.s3_key)
     except Exception:
@@ -523,6 +574,92 @@ def get_video(media_id: int, db: Session = Depends(get_db), current_user: models
     return resp
 
 
+@router.put('/media/video/{media_id}', response_model=schemas.VideoOut)
+def update_video(
+    media_id: int,
+    updates: schemas.VideoUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    media = crud.get_media(db, media_id)
+    if not media:
+        raise HTTPException(status_code=404, detail='Media not found')
+    if media.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail='Not authorized')
+    if not (media.mimetype and media.mimetype.startswith('video/')) and media.media_type != 'video':
+        raise HTTPException(status_code=400, detail='Media is not a video')
+
+    # Update description if provided
+    if updates.description is not None:
+        crud.update_media(db, media, description=updates.description)
+
+    # Update genero if provided
+    if updates.genero is not None:
+        crud.update_video_metadata_genero(db, media, genero=updates.genero)
+
+    # Replace tags if provided
+    if updates.tags is not None:
+        crud.replace_tags_for_media(db, media, updates.tags)
+
+    # Refresh media to get updated relationships
+    db.refresh(media)
+
+    # Build response similar to get_video
+    vid_md = getattr(media, 'video_metadata', None)
+    tags = [t.name for t in (media.tags or [])]
+    genero = getattr(vid_md, 'genero', None) if vid_md else None
+
+    # Get S3 keys from video_metadata columns and generate presigned URLs
+    s3_key_1080 = getattr(vid_md, 'url_1080', None) if vid_md else None
+    s3_key_720 = getattr(vid_md, 'url_720', None) if vid_md else None
+    s3_key_480 = getattr(vid_md, 'url_480', None) if vid_md else None
+
+    # Generate presigned URLs for each rendition
+    url_1080 = None
+    url_720 = None
+    url_480 = None
+    
+    if s3_key_1080:
+        try:
+            url_1080 = s3_utils.generate_presigned_url(s3_key_1080)
+        except Exception:
+            url_1080 = None
+    
+    if s3_key_720:
+        try:
+            url_720 = s3_utils.generate_presigned_url(s3_key_720)
+        except Exception:
+            url_720 = None
+    
+    if s3_key_480:
+        try:
+            url_480 = s3_utils.generate_presigned_url(s3_key_480)
+        except Exception:
+            url_480 = None
+
+    resp = {
+        'id': media.id,
+        'description': media.description,
+        'filename': media.filename,
+        'mimetype': media.mimetype,
+        'size': media.size,
+        'created_at': media.created_at.isoformat() if media.created_at else None,
+        'duration_seconds': float(getattr(vid_md, 'duration_seconds')) if vid_md and getattr(vid_md, 'duration_seconds') is not None else None,
+        'width': getattr(vid_md, 'width', None) if vid_md else None,
+        'height': getattr(vid_md, 'height', None) if vid_md else None,
+        'frame_rate': float(getattr(vid_md, 'frame_rate')) if vid_md and getattr(vid_md, 'frame_rate') is not None else None,
+        'video_codec': getattr(vid_md, 'video_codec', None) if vid_md else None,
+        'audio_codec': getattr(vid_md, 'audio_codec', None) if vid_md else None,
+        'bitrate': getattr(vid_md, 'bitrate', None) if vid_md else None,
+        'tags': tags,
+        'genero': genero,
+        'url_1080': url_1080,
+        'url_720': url_720,
+        'url_480': url_480,
+    }
+    return resp
+
+
 @router.get('/media/audio/{media_id}', response_model=schemas.AudioOut)
 def get_audio(media_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
     media = crud.get_media(db, media_id)
@@ -533,6 +670,63 @@ def get_audio(media_id: int, db: Session = Depends(get_db), current_user: models
     if not (media.mimetype and media.mimetype.startswith('audio/')) and media.media_type != 'audio':
         raise HTTPException(status_code=400, detail='Media is not an audio')
 
+    aud_md = getattr(media, 'audio_metadata', None)
+    tags = [t.name for t in (media.tags or [])]
+    genero = getattr(aud_md, 'genero', None) if aud_md else None
+    try:
+        url = s3_utils.generate_presigned_url(media.s3_key)
+    except Exception:
+        url = None
+
+    resp = {
+        'id': media.id,
+        'description': media.description,
+        'filename': media.filename,
+        'mimetype': media.mimetype,
+        'size': media.size,
+        'created_at': media.created_at.isoformat() if media.created_at else None,
+        'duration_seconds': float(getattr(aud_md, 'duration_seconds')) if aud_md and getattr(aud_md, 'duration_seconds') is not None else None,
+        'bitrate': getattr(aud_md, 'bitrate', None) if aud_md else None,
+        'sample_rate': getattr(aud_md, 'sample_rate', None) if aud_md else None,
+        'channels': getattr(aud_md, 'channels', None) if aud_md else None,
+        'tags': tags,
+        'genero': genero,
+        'url': url,
+    }
+    return resp
+
+
+@router.put('/media/audio/{media_id}', response_model=schemas.AudioOut)
+def update_audio(
+    media_id: int,
+    updates: schemas.AudioUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    media = crud.get_media(db, media_id)
+    if not media:
+        raise HTTPException(status_code=404, detail='Media not found')
+    if media.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail='Not authorized')
+    if not (media.mimetype and media.mimetype.startswith('audio/')) and media.media_type != 'audio':
+        raise HTTPException(status_code=400, detail='Media is not an audio')
+
+    # Update description if provided
+    if updates.description is not None:
+        crud.update_media(db, media, description=updates.description)
+
+    # Update genero if provided
+    if updates.genero is not None:
+        crud.update_audio_metadata_genero(db, media, genero=updates.genero)
+
+    # Replace tags if provided
+    if updates.tags is not None:
+        crud.replace_tags_for_media(db, media, updates.tags)
+
+    # Refresh media to get updated relationships
+    db.refresh(media)
+
+    # Build response similar to get_audio
     aud_md = getattr(media, 'audio_metadata', None)
     tags = [t.name for t in (media.tags or [])]
     genero = getattr(aud_md, 'genero', None) if aud_md else None

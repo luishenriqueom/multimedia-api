@@ -61,7 +61,6 @@ def update_user(db: Session, db_user: models.User, updates: schemas.UserUpdate) 
 
 def create_media(db: Session, owner: models.User, filename: str, s3_key: str, mimetype: str, size: int, meta: schemas.MediaCreate, media_type: str = 'other') -> models.Media:
     db_media = models.Media(
-        title=meta.title,
         description=meta.description,
         filename=filename,
         s3_key=s3_key,
@@ -178,7 +177,7 @@ def list_media(db: Session, owner_id: int, q: Optional[str]=None, limit: int=50,
     query = db.query(models.Media).filter(models.Media.owner_id == owner_id)
     if q:
         term = f"%{q}%"
-        query = query.filter(or_(models.Media.title.ilike(term), models.Media.description.ilike(term)))
+        query = query.filter(or_(models.Media.filename.ilike(term), models.Media.description.ilike(term)))
     return query.order_by(models.Media.created_at.desc()).limit(limit).offset(offset).all()
 
 # Tags
@@ -203,3 +202,44 @@ def associate_tags_to_media(db: Session, media: models.Media, tag_names: List[st
             media.tags.append(tag)
     db.commit()
     db.refresh(media)
+
+def replace_tags_for_media(db: Session, media: models.Media, tag_names: Optional[List[str]]):
+    """Replace all tags for a media item with the provided tags. Creates tags if they don't exist."""
+    # Clear existing tags
+    media.tags.clear()
+    # Add new tags if provided
+    if tag_names:
+        for tag_name in tag_names:
+            tag = get_or_create_tag(db, tag_name.strip())
+            media.tags.append(tag)
+    db.commit()
+    db.refresh(media)
+
+def update_media(db: Session, media: models.Media, description: Optional[str] = None) -> models.Media:
+    """Update basic media fields."""
+    if description is not None:
+        media.description = description
+    db.add(media)
+    db.commit()
+    db.refresh(media)
+    return media
+
+def update_video_metadata_genero(db: Session, media: models.Media, genero: Optional[str] = None):
+    """Update genero in video metadata."""
+    if not media.video_metadata:
+        return
+    if genero is not None:
+        media.video_metadata.genero = genero
+        db.add(media.video_metadata)
+        db.commit()
+        db.refresh(media.video_metadata)
+
+def update_audio_metadata_genero(db: Session, media: models.Media, genero: Optional[str] = None):
+    """Update genero in audio metadata."""
+    if not media.audio_metadata:
+        return
+    if genero is not None:
+        media.audio_metadata.genero = genero
+        db.add(media.audio_metadata)
+        db.commit()
+        db.refresh(media.audio_metadata)

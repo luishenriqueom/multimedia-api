@@ -30,31 +30,40 @@ class UserUpdate(BaseModel):
     bio: Optional[str] = None
 
 class MediaCreate(BaseModel):
-    title: Optional[str] = None
     description: Optional[str] = None
     is_public: Optional[bool] = False
 
 class ImageUpload(BaseModel):
-    title: Optional[str] = None
     description: Optional[str] = None
     is_profile: Optional[bool] = False
     tags: Optional[list[str]] = None
 
 class VideoUpload(BaseModel):
-    title: Optional[str] = None
     description: Optional[str] = None
     genero: Optional[str] = None
     tags: Optional[list[str]] = None
 
 class AudioUpload(BaseModel):
-    title: Optional[str] = None
+    description: Optional[str] = None
+    genero: Optional[str] = None
+    tags: Optional[list[str]] = None
+
+class ImageUpdate(BaseModel):
+    description: Optional[str] = None
+    tags: Optional[list[str]] = None
+
+class VideoUpdate(BaseModel):
+    description: Optional[str] = None
+    genero: Optional[str] = None
+    tags: Optional[list[str]] = None
+
+class AudioUpdate(BaseModel):
     description: Optional[str] = None
     genero: Optional[str] = None
     tags: Optional[list[str]] = None
 
 class MediaOut(BaseModel):
     id: int
-    title: Optional[str]
     description: Optional[str]
     filename: str
     mimetype: Optional[str]
