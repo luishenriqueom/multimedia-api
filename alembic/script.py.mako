@@ -1,16 +1,26 @@
+"""${message}
+
+Revision ID: ${up_revision}
+Revises: ${down_revision | comma,n}
+Create Date: ${create_date}
+
 """
-Revision identifiers, used by Alembic.
-This file is included as a minimal script template to keep default alembic behavior.
-"""
-% if autogenerate:
+from typing import Sequence, Union
+
 from alembic import op
 import sqlalchemy as sa
+${imports if imports else ""}
 
-% endif
+# revision identifiers, used by Alembic.
+revision: str = ${repr(up_revision)}
+down_revision: Union[str, None] = ${repr(down_revision)}
+branch_labels: Union[str, Sequence[str], None] = ${repr(branch_labels)}
+depends_on: Union[str, Sequence[str], None] = ${repr(depends_on)}
 
-def upgrade():
-    pass
+
+def upgrade() -> None:
+    ${upgrades if upgrades else "pass"}
 
 
-def downgrade():
-    pass
+def downgrade() -> None:
+    ${downgrades if downgrades else "pass"}
