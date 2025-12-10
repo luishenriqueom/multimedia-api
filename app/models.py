@@ -31,10 +31,14 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     full_name = Column(String, nullable=True)
+    # user-visible short username (handle); optional and distinct from full_name
+    username = Column(String, unique=False, nullable=True)
     bio = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     media = relationship("Media", back_populates="owner", cascade="all, delete-orphan")
+    # S3 key for user's avatar (thumbnail or original)
+    avatar_s3_key = Column(String, nullable=True)
 
 
 class Media(Base):

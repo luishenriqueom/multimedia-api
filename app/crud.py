@@ -50,8 +50,27 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[models
 def update_user(db: Session, db_user: models.User, updates: schemas.UserUpdate) -> models.User:
     if updates.full_name is not None:
         db_user.full_name = updates.full_name
+    # Allow updating username if provided
+    if getattr(updates, 'username', None) is not None:
+        # Normalize empty strings to None
+        username_val = updates.username.strip() if isinstance(updates.username, str) else updates.username
+        db_user.username = username_val or None
     if updates.bio is not None:
         db_user.bio = updates.bio
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+
+def change_user_password(db: Session, db_user: models.User, new_password: str) -> models.User:
+    """Change the user's password (hashes with the same scheme as create_user)."""
+    if not new_password:
+        raise ValueError("new_password must not be empty")
+    pw_bytes = new_password.encode("utf-8")
+    sha = hashlib.sha256(pw_bytes).digest()
+    hashed = bcrypt.hashpw(sha, bcrypt.gensalt()).decode("utf-8")
+    db_user.hashed_password = hashed
     db.add(db_user)
     db.commit()
     db.refresh(db_user)

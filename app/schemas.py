@@ -18,16 +18,24 @@ class UserOut(BaseModel):
     id: int
     email: EmailStr
     full_name: Optional[str]
+    username: Optional[str]
     bio: Optional[str]
     is_active: bool
     created_at: datetime
+    avatar_url: Optional[str] = None
 
     class Config:
         orm_mode = True
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
+    username: Optional[str] = None
     bio: Optional[str] = None
+
+
+class PasswordChange(BaseModel):
+    old_password: str
+    new_password: str
 
 class MediaCreate(BaseModel):
     description: Optional[str] = None

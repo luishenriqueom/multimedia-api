@@ -36,11 +36,59 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 # User profile
 @router.get('/users/me', response_model=schemas.UserOut)
 def read_users_me(current_user: models.User = Depends(auth.get_current_user)):
-    return current_user
+    # Build response and include presigned avatar URL if available
+    avatar_url = None
+    try:
+        if getattr(current_user, 'avatar_s3_key', None):
+            avatar_url = s3_utils.generate_presigned_url(current_user.avatar_s3_key)
+    except Exception:
+        avatar_url = None
+
+    return {
+        'id': current_user.id,
+        'email': current_user.email,
+        'full_name': current_user.full_name,
+        'username': getattr(current_user, 'username', None),
+        'bio': current_user.bio,
+        'is_active': current_user.is_active,
+        'created_at': current_user.created_at,
+        'avatar_url': avatar_url,
+    }
 
 @router.put('/users/me', response_model=schemas.UserOut)
 def update_users_me(updates: schemas.UserUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
-    return crud.update_user(db, current_user, updates)
+    updated = crud.update_user(db, current_user, updates)
+    avatar_url = None
+    try:
+        if getattr(updated, 'avatar_s3_key', None):
+            avatar_url = s3_utils.generate_presigned_url(updated.avatar_s3_key)
+    except Exception:
+        avatar_url = None
+    return {
+        'id': updated.id,
+        'email': updated.email,
+        'full_name': updated.full_name,
+        'username': getattr(updated, 'username', None),
+        'bio': updated.bio,
+        'is_active': updated.is_active,
+        'created_at': updated.created_at,
+        'avatar_url': avatar_url,
+    }
+
+
+@router.put('/users/me/password')
+def change_password(payload: schemas.PasswordChange, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+    # Verify current password is correct
+    verified = crud.authenticate_user(db, current_user.email, payload.old_password)
+    if not verified:
+        raise HTTPException(status_code=400, detail='Senha atual incorreta')
+
+    try:
+        crud.change_user_password(db, current_user, payload.new_password)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {"message": "Senha atualizada com sucesso"}
 
 # Media endpoints
 @router.post('/media/upload/image', response_model=schemas.MediaOut)
@@ -181,6 +229,19 @@ def upload_image(
     thumb_obj = None
     if thumb_key:
         thumb_obj = crud.create_thumbnail(db, media, thumb_key, thumb_width, thumb_height, thumb_size, purpose='listing')
+
+    # If this upload is meant to be a profile image, set the user's avatar S3 key
+    if is_profile:
+        try:
+            # prefer thumbnail key when available
+            avatar_key = thumb_key if thumb_key else orig_key
+            current_user.avatar_s3_key = avatar_key
+            db.add(current_user)
+            db.commit()
+            db.refresh(current_user)
+        except Exception:
+            # don't fail the upload if avatar update fails
+            pass
 
     crud.create_image_metadata(db, media, width, height, color_depth, dpi_x, dpi_y, exif_data, main_thumbnail_id=(thumb_obj.id if thumb_obj else None))
 
