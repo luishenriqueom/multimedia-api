@@ -3,8 +3,11 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # Install system dependencies
+# ADICIONADO: 'ffmpeg' no final da lista
+# ADICIONADO: limpeza de cache (rm -rf...) para deixar a imagem menor
 RUN apt-get update && \
-    apt-get install -y libpq-dev gcc python3-dev
+    apt-get install -y libpq-dev gcc python3-dev ffmpeg && \
+    rm -rf /var/lib/apt/lists/*
 
 COPY ./requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
